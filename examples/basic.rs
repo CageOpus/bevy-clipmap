@@ -97,6 +97,10 @@ fn setup(
         min: -1312.5,
         max: 1312.5,
         wireframe: false,
+        // CAGE: splatmap defaults (use color texture as fallback)
+        splatmap: asset_server.load("color_2048x2048.png"),
+        layers: asset_server.load("color_2048x2048.png"),
+        layer_uv_scale: 1.0,
     });
 }
 

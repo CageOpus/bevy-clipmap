@@ -149,6 +149,17 @@ pub struct Clipmap {
 
     /// Enable wireframe.
     pub wireframe: bool,
+
+    // --- CAGE: splatmap support ---
+
+    /// Splatmap texture (RGBA8, each channel = weight for one layer).
+    pub splatmap: Handle<Image>,
+
+    /// Layer texture array (2d_array, up to 4 layers).
+    pub layers: Handle<Image>,
+
+    /// UV scale multiplier for layer textures (tiling frequency).
+    pub layer_uv_scale: f32,
 }
 
 #[derive(Component)]
@@ -265,6 +276,9 @@ fn init_grids(
                 },
                 translation: Vec2::ZERO,
                 wireframe: 0,
+                splatmap: clipmap.splatmap.clone(),
+                layers: clipmap.layers.clone(),
+                layer_uv_scale: clipmap.layer_uv_scale,
             },
         });
 
@@ -286,6 +300,9 @@ fn init_grids(
                 },
                 translation: Vec2::ZERO,
                 wireframe: 1,
+                splatmap: clipmap.splatmap.clone(),
+                layers: clipmap.layers.clone(),
+                layer_uv_scale: clipmap.layer_uv_scale,
             },
         });
 
@@ -508,6 +525,16 @@ struct GridMaterial {
     translation: Vec2,
     #[uniform(111)]
     wireframe: u32,
+
+    // --- CAGE: splatmap support ---
+    #[texture(112)]
+    #[sampler(113)]
+    splatmap: Handle<Image>,
+    #[texture(114, dimension = "2d_array")]
+    #[sampler(115)]
+    layers: Handle<Image>,
+    #[uniform(116, visibility(fragment))]
+    layer_uv_scale: f32,
 }
 
 impl MaterialExtension for GridMaterial {

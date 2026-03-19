@@ -49,6 +49,13 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(110) var<uniform> translation: vec2<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(111) var<uniform> wireframe: u32;
 
+// CAGE: splatmap support
+@group(#{MATERIAL_BIND_GROUP}) @binding(112) var splatmap_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(113) var splatmap_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(114) var layer_textures: texture_2d_array<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(115) var layer_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(116) var<uniform> layer_uv_scale: f32;
+
 fn height_bilinear(uv: vec2<f32>, lod: i32) -> f32 {
     let tex_size = vec2<f32>(textureDimensions(heightmap_texture, lod));
     let pos = uv * tex_size;
@@ -114,7 +121,21 @@ fn fragment(
 
     var pbr_input = pbr_input_from_standard_material(in_modified, is_front);
     pbr_input.material.perceptual_roughness = 1.0;
-    pbr_input.material.base_color = textureSample(color_texture, color_sampler, uv);
+
+    // CAGE: splatmap-based multi-layer texturing
+    let splat = textureSample(splatmap_texture, splatmap_sampler, uv);
+    let luv = uv * layer_uv_scale;
+    let c0 = textureSample(layer_textures, layer_sampler, luv, 0);
+    let c1 = textureSample(layer_textures, layer_sampler, luv, 1);
+    let c2 = textureSample(layer_textures, layer_sampler, luv, 2);
+    let c3 = textureSample(layer_textures, layer_sampler, luv, 3);
+    let splat_weight = splat.r + splat.g + splat.b + splat.a;
+    if splat_weight > 0.001 {
+        pbr_input.material.base_color = (c0 * splat.r + c1 * splat.g + c2 * splat.b + c3 * splat.a) / splat_weight;
+    } else {
+        // Fallback to color texture if splatmap is zero
+        pbr_input.material.base_color = textureSample(color_texture, color_sampler, uv);
+    }
 
 #ifdef PREPASS_PIPELINE
     let out = deferred_output(in_modified, pbr_input);
