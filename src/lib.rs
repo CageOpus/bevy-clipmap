@@ -244,7 +244,10 @@ fn init_grids(
         ));
 
         let terrain_material = materials.add(ExtendedMaterial {
-            base: StandardMaterial::default(),
+            base: StandardMaterial {
+                cull_mode: None,
+                ..default()
+            },
             extension: GridMaterial {
                 color: clipmap.color.clone(),
                 heightmap: clipmap.heightmap.clone(),
@@ -262,7 +265,10 @@ fn init_grids(
         });
 
         let terrain_material_w = materials.add(ExtendedMaterial {
-            base: StandardMaterial::default(),
+            base: StandardMaterial {
+                cull_mode: None,
+                ..default()
+            },
             extension: GridMaterial {
                 color: clipmap.color.clone(),
                 heightmap: clipmap.heightmap.clone(),
