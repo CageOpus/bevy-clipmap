@@ -9,6 +9,7 @@ exclude = ["assets/*", "screenshot.png"]
 
 [dependencies]
 bevy = "0.18.0"
+bytemuck = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 bevy = { version = "0.18.0", features = ["free_camera"] }

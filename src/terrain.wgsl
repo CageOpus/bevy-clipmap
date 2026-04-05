@@ -56,6 +56,75 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(115) var layer_sampler: sampler;
 @group(#{MATERIAL_BIND_GROUP}) @binding(116) var<uniform> layer_uv_scale: f32;
 
+// CAGE: analytical cutout regions
+struct CutoutRegion {
+    center_x: f32,
+    center_z: f32,
+    half_length: f32,
+    half_width: f32,
+    axis_x: f32,
+    axis_z: f32,
+    region_type: f32, // 0.0 = OBB, 1.0 = triangle
+    _reserved: f32,
+};
+
+struct CutoutGridCell {
+    offset: u32,
+    count: u32,
+};
+
+@group(#{MATERIAL_BIND_GROUP}) @binding(117)
+    var<storage, read> cutout_regions: array<CutoutRegion>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(118)
+    var<storage, read> cutout_grid: array<CutoutGridCell>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(119)
+    var<uniform> cutout_params: vec4<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(120)
+    var<uniform> cutout_params2: vec4<f32>;
+
+fn point_in_triangle(px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32, cx: f32, cz: f32) -> bool {
+    let v0x = cx - ax; let v0z = cz - az;
+    let v1x = bx - ax; let v1z = bz - az;
+    let v2x = px - ax; let v2z = pz - az;
+    let d00 = v0x * v0x + v0z * v0z;
+    let d01 = v0x * v1x + v0z * v1z;
+    let d02 = v0x * v2x + v0z * v2z;
+    let d11 = v1x * v1x + v1z * v1z;
+    let d12 = v1x * v2x + v1z * v2z;
+    let denom = d00 * d11 - d01 * d01;
+    if abs(denom) < 1e-6 { return false; }
+    let inv_denom = 1.0 / denom;
+    let u = (d11 * d02 - d01 * d12) * inv_denom;
+    let v = (d00 * d12 - d01 * d02) * inv_denom;
+    return u >= 0.0 && v >= 0.0 && (u + v) <= 1.0;
+}
+
+fn is_cutout(wx: f32, wz: f32) -> bool {
+    let gw = u32(cutout_params.x);
+    let gh = u32(cutout_params.y);
+    if gw == 0u || gh == 0u { return false; }
+
+    let cell_size = cutout_params.z;
+    let ox = cutout_params.w;
+    let oz = cutout_params2.x;
+
+    let cx = u32(floor((wx - ox) / cell_size));
+    let cz = u32(floor((wz - oz) / cell_size));
+    if cx >= gw || cz >= gh { return false; }
+
+    let cell = cutout_grid[cz * gw + cx];
+    for (var i = 0u; i < cell.count; i++) {
+        let r = cutout_regions[cell.offset + i];
+        if point_in_triangle(wx, wz,
+            r.center_x, r.center_z,
+            r.half_length, r.half_width,
+            r.axis_x, r.axis_z) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn height_bilinear(uv: vec2<f32>, lod: i32) -> f32 {
     let tex_size = vec2<f32>(textureDimensions(heightmap_texture, lod));
     let pos = uv * tex_size;
@@ -101,6 +170,9 @@ fn fragment(
         out.color = vec4(1.0);
         return out;
     }
+
+    // CAGE: analytical cutout discard
+    if is_cutout(in.world_position.x, in.world_position.z) { discard; }
 
     var in_modified = in;
 

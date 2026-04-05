@@ -4,13 +4,13 @@ use std::{
 };
 
 use bevy::{
-    asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path},
+    asset::{embedded_asset, embedded_path, AssetPath, RenderAssetUsages},
     camera::{primitives::Aabb, visibility::NoAutoAabb},
     light::NotShadowCaster,
     mesh::{Indices, PrimitiveTopology},
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
-    render::render_resource::AsBindGroup,
+    render::{render_resource::AsBindGroup, storage::ShaderStorageBuffer},
     shader::ShaderRef,
 };
 
@@ -106,6 +106,61 @@ impl MeshBuilder {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Analytical cutout types (for terrain masking via triangle grid)
+// ---------------------------------------------------------------------------
+
+/// A cutout triangle for terrain masking.
+/// GPU layout: 2 × vec4<f32> = 32 bytes, naturally aligned.
+/// Fields store three 2D vertices: `center` = vertex A (XZ),
+/// `half_extents` = vertex B (XZ), `local_axis` = vertex C (XZ).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ClipmapCutoutRegion {
+    /// Vertex A in world XZ coordinates.
+    pub center: [f32; 2],
+    /// Vertex B in world XZ coordinates.
+    pub half_extents: [f32; 2],
+    /// Vertex C in world XZ coordinates.
+    pub local_axis: [f32; 2],
+    /// Unused (kept for alignment). Previously `region_type`.
+    pub region_type: f32,
+    pub _reserved: f32,
+}
+
+/// Configuration for the cutout grid spatial index.
+#[derive(Clone, Debug)]
+pub struct ClipmapCutoutGridParams {
+    pub grid_dims: UVec2,
+    pub cell_size: f32,
+    pub world_origin: Vec2,
+}
+
+impl Default for ClipmapCutoutGridParams {
+    fn default() -> Self {
+        Self {
+            grid_dims: UVec2::ZERO,
+            cell_size: 32.0,
+            world_origin: Vec2::ZERO,
+        }
+    }
+}
+
+impl ClipmapCutoutGridParams {
+    /// Pack grid params into two Vec4 uniforms for the shader.
+    pub fn as_uniforms(&self) -> (Vec4, Vec4) {
+        (
+            Vec4::new(
+                self.grid_dims.x as f32,
+                self.grid_dims.y as f32,
+                self.cell_size,
+                self.world_origin.x,
+            ),
+            Vec4::new(self.world_origin.y, 0.0, 0.0, 0.0),
+        )
+    }
+}
+
 /// The component defining a clipmap.
 /// https://hhoppe.com/gpugcm.pdf
 #[derive(Component)]
@@ -147,7 +202,6 @@ pub struct Clipmap {
     pub wireframe: bool,
 
     // --- CAGE: splatmap support ---
-
     /// Splatmap texture (RGBA8, each channel = weight for one layer).
     pub splatmap: Handle<Image>,
 
@@ -156,6 +210,16 @@ pub struct Clipmap {
 
     /// UV scale multiplier for layer textures (tiling frequency).
     pub layer_uv_scale: f32,
+
+    // --- CAGE: analytical cutout regions ---
+    /// Storage buffer of `ClipmapCutoutRegion` OBBs (sorted by grid cell).
+    pub cutout_regions: Handle<ShaderStorageBuffer>,
+
+    /// Storage buffer of `[u32; 2]` grid cells (offset, count) into cutout_regions.
+    pub cutout_grid: Handle<ShaderStorageBuffer>,
+
+    /// Grid parameters for the cutout spatial index.
+    pub cutout_grid_params: ClipmapCutoutGridParams,
 }
 
 #[derive(Component)]
@@ -275,6 +339,10 @@ fn init_grids(
                 splatmap: clipmap.splatmap.clone(),
                 layers: clipmap.layers.clone(),
                 layer_uv_scale: clipmap.layer_uv_scale,
+                cutout_regions: clipmap.cutout_regions.clone(),
+                cutout_grid: clipmap.cutout_grid.clone(),
+                cutout_params: clipmap.cutout_grid_params.as_uniforms().0,
+                cutout_params2: clipmap.cutout_grid_params.as_uniforms().1,
             },
         });
 
@@ -299,6 +367,10 @@ fn init_grids(
                 splatmap: clipmap.splatmap.clone(),
                 layers: clipmap.layers.clone(),
                 layer_uv_scale: clipmap.layer_uv_scale,
+                cutout_regions: clipmap.cutout_regions.clone(),
+                cutout_grid: clipmap.cutout_grid.clone(),
+                cutout_params: clipmap.cutout_grid_params.as_uniforms().0,
+                cutout_params2: clipmap.cutout_grid_params.as_uniforms().1,
             },
         });
 
@@ -477,6 +549,9 @@ fn update_grids(
                 continue;
             };
             material.extension.translation = grid_pos;
+            let (cp, cp2) = clipmap.cutout_grid_params.as_uniforms();
+            material.extension.cutout_params = cp;
+            material.extension.cutout_params2 = cp2;
             aabb.center.y = (clipmap.max + clipmap.min) / aabb_scale;
             aabb.half_extents.y = (clipmap.max - clipmap.min) / aabb_scale;
         }
@@ -531,6 +606,16 @@ struct GridMaterial {
     layers: Handle<Image>,
     #[uniform(116)]
     layer_uv_scale: f32,
+
+    // --- CAGE: analytical cutout ---
+    #[storage(117, read_only)]
+    cutout_regions: Handle<ShaderStorageBuffer>,
+    #[storage(118, read_only)]
+    cutout_grid: Handle<ShaderStorageBuffer>,
+    #[uniform(119)]
+    cutout_params: Vec4,
+    #[uniform(120)]
+    cutout_params2: Vec4,
 }
 
 impl MaterialExtension for GridMaterial {
