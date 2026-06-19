@@ -135,6 +135,7 @@ fn setup(
             grid_dims: UVec2::ONE,
             cell_size: 2625.0,
             world_origin: Vec2::splat(-1312.5),
+            cutout_eps: 0.30,
         },
     });
 }

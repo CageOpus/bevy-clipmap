@@ -64,7 +64,10 @@ struct CutoutRegion {
     half_width: f32,
     axis_x: f32,
     axis_z: f32,
-    region_type: f32, // 0.0 = OBB, 1.0 = triangle
+    // CAGE: carries the road-surface Y for the overpass gate (DC-2/DC-6). This was
+    // previously an OBB/triangle discriminator; the OBB path is dead
+    // (point_in_triangle runs unconditionally), so the field is repurposed.
+    region_type: f32, // road-surface Y at this triangle (PlanarPerTri / MinPerTri)
     _reserved: f32,
 };
 
@@ -112,6 +115,17 @@ fn is_cutout(wx: f32, wz: f32) -> bool {
     let cz = u32(floor((wz - oz) / cell_size));
     if cx >= gw || cz >= gh { return false; }
 
+    // CAGE: overpass threshold gate (FR-006/FR-006a). ε rides cutout_params2.y.
+    let eps = cutout_params2.y;
+    // Re-sample terrain at the fragment's EXACT XZ via the same LOD0 bilinear the
+    // CPU oracle uses (Heightmap::height_at) — NOT the perspective-interpolated
+    // vertex world_position.y, which diverges from true bilinear at coarse LOD.
+    let texture_size = vec2<f32>(textureDimensions(heightmap_texture));
+    let world_size = texel_size * texture_size;
+    let uv = vec2<f32>(wx, wz) / world_size + 0.5;
+    let h = height_bilinear(uv, 0);
+    let terrain_y = h * (minmax.y - minmax.x) + minmax.x;
+
     let cell = cutout_grid[cz * gw + cx];
     for (var i = 0u; i < cell.count; i++) {
         let r = cutout_regions[cell.offset + i];
@@ -119,7 +133,12 @@ fn is_cutout(wx: f32, wz: f32) -> bool {
             r.center_x, r.center_z,
             r.half_length, r.half_width,
             r.axis_x, r.axis_z) {
-            return true;
+            let road_y = r.region_type; // DC-2: per-tri road-surface Y
+            // FR-006 gate (sign normative): discard iff road at/below terrain + ε.
+            // Road clearly above (overpass) keeps the terrain → keep scanning.
+            if road_y <= terrain_y + eps {
+                return true;
+            }
         }
     }
     return false;
