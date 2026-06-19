@@ -134,6 +134,11 @@ pub struct ClipmapCutoutGridParams {
     pub grid_dims: UVec2,
     pub cell_size: f32,
     pub world_origin: Vec2,
+    /// CAGE: terrain-cutout overpass gate ε (metres). A terrain fragment inside a
+    /// road footprint is discarded iff `road_y <= terrain_y + cutout_eps`
+    /// (sign normative). Packed into `cutout_params2.y`; re-pushed every frame by
+    /// `update_grids` so ε edits propagate without a buffer rebuild.
+    pub cutout_eps: f32,
 }
 
 impl Default for ClipmapCutoutGridParams {
@@ -142,6 +147,7 @@ impl Default for ClipmapCutoutGridParams {
             grid_dims: UVec2::ZERO,
             cell_size: 32.0,
             world_origin: Vec2::ZERO,
+            cutout_eps: 0.30,
         }
     }
 }
@@ -156,7 +162,8 @@ impl ClipmapCutoutGridParams {
                 self.cell_size,
                 self.world_origin.x,
             ),
-            Vec4::new(self.world_origin.y, 0.0, 0.0, 0.0),
+            // CAGE: .y carries the cutout gate ε (was hardcoded 0.0).
+            Vec4::new(self.world_origin.y, self.cutout_eps, 0.0, 0.0),
         )
     }
 }
