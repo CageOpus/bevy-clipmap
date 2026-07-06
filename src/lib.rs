@@ -447,7 +447,7 @@ fn update_grids(
             let Ok(material) = terrain_material_handles.get(child) else {
                 continue;
             };
-            let Some(material) = terrain_materials.get_mut(material) else {
+            let Some(mut material) = terrain_materials.get_mut(material) else {
                 continue;
             };
             let Ok(mut aabb) = aabbs.get_mut(child) else {

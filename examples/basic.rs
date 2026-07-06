@@ -5,8 +5,11 @@ use bevy::{
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     color::palettes::css::ALICE_BLUE,
     image::ImageLoaderSettings,
-    light::{AtmosphereEnvironmentMapLight, light_consts::lux},
-    pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium},
+    light::{
+        Atmosphere, AtmosphereEnvironmentMapLight, SunDisk, atmosphere::ScatteringMedium,
+        light_consts::lux,
+    },
+    pbr::AtmosphereSettings,
     post_process::bloom::Bloom,
     prelude::*,
 };
@@ -28,6 +31,10 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
 ) {
+    commands.spawn(Atmosphere::earth(
+        scattering_mediums.add(ScatteringMedium::earth(256, 256)),
+    ));
+
     let target = commands
         .spawn((
             Camera3d::default(),
@@ -35,8 +42,7 @@ fn setup(
                 fov: 90.0_f32.to_radians(),
                 ..Default::default()
             }),
-            Bloom::default(),
-            Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
+            Bloom::NATURAL,
             AtmosphereSettings {
                 aerial_view_lut_max_distance: 16384.0,
                 ..Default::default()
@@ -55,10 +61,14 @@ fn setup(
     for _ in 0..2 {
         commands.spawn((
             DirectionalLight {
-                shadows_enabled: true,
+                shadow_maps_enabled: true,
                 illuminance: lux::RAW_SUNLIGHT,
                 color: ALICE_BLUE.into(),
                 ..Default::default()
+            },
+            SunDisk {
+                angular_size: SunDisk::EARTH.angular_size * 3.0,
+                intensity: 30.0,
             },
             Transform::default(),
         ));
@@ -71,18 +81,18 @@ fn setup(
         texel_size: 8.0,
         target,
         color: asset_server.load("color_2048x2048.png"),
-        heightmap: asset_server.load_with_settings(
-            "heightmap_1024x1024.ktx2",
-            |settings: &mut ImageLoaderSettings| {
+        heightmap: asset_server
+            .load_builder()
+            .with_settings(|settings: &mut ImageLoaderSettings| {
                 settings.is_srgb = false;
-            },
-        ),
-        horizon: asset_server.load_with_settings(
-            "heightmap_horizon_512x512_8.ktx2",
-            |settings: &mut ImageLoaderSettings| {
+            })
+            .load("heightmap_1024x1024.ktx2"),
+        horizon: asset_server
+            .load_builder()
+            .with_settings(|settings: &mut ImageLoaderSettings| {
                 settings.is_srgb = false;
-            },
-        ),
+            })
+            .load("heightmap_horizon_512x512_8.ktx2"),
         horizon_coeffs: 8,
         min: -1312.5,
         max: 1312.5,
