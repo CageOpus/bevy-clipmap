@@ -12,10 +12,13 @@ use bevy::{
     pbr::AtmosphereSettings,
     post_process::bloom::Bloom,
     prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+    render::{
+        render_resource::{Extent3d, TextureDimension, TextureFormat},
+        storage::ShaderBuffer,
+    },
 };
 
-use bevy_clipmap::{Clipmap, ClipmapPlugin};
+use bevy_clipmap::{Clipmap, ClipmapCutoutGridParams, ClipmapPlugin};
 
 fn main() {
     App::new()
@@ -32,6 +35,7 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
     mut images: ResMut<Assets<Image>>,
+    mut buffers: ResMut<Assets<ShaderBuffer>>,
 ) {
     commands.spawn(Atmosphere::earth(
         scattering_mediums.add(ScatteringMedium::earth(256, 256)),
@@ -53,6 +57,11 @@ fn setup(
         TextureFormat::Rgba8UnormSrgb,
         default(),
     ));
+    // CAGE: zero-filled cutout placeholders (no road footprints) — one empty
+    // region record and a 1x1 grid cell so the storage bindings validate.
+    let cutout_regions = buffers.add(ShaderBuffer::new(&[0u8; 32], default()));
+    let cutout_grid = buffers.add(ShaderBuffer::new(&[0u8; 8], default()));
+
     let target = commands
         .spawn((
             Camera3d::default(),
@@ -119,6 +128,14 @@ fn setup(
         splatmap: dummy_splatmap,
         layers: dummy_layers,
         layer_uv_scale: 1.0,
+        // CAGE: cutout defaults (empty regions, one grid cell spanning the world)
+        cutout_regions,
+        cutout_grid,
+        cutout_grid_params: ClipmapCutoutGridParams {
+            grid_dims: UVec2::ONE,
+            cell_size: 2625.0,
+            world_origin: Vec2::splat(-1312.5),
+        },
     });
 }
 
