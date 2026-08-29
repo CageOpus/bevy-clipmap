@@ -12,6 +12,7 @@ use bevy::{
     pbr::AtmosphereSettings,
     post_process::bloom::Bloom,
     prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
 use bevy_clipmap::{Clipmap, ClipmapPlugin};
@@ -30,11 +31,28 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     commands.spawn(Atmosphere::earth(
         scattering_mediums.add(ScatteringMedium::earth(256, 256)),
     ));
 
+    // Dummy all-zero splatmap so the shader falls back to the color texture
+    let dummy_splatmap = images.add(Image::new(
+        Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        vec![0, 0, 0, 0],
+        TextureFormat::Rgba8UnormSrgb,
+        default(),
+    ));
+    // Dummy 2D array texture (required by the `layers` binding which expects D2Array)
+    let dummy_layers = images.add(Image::new(
+        Extent3d { width: 1, height: 1, depth_or_array_layers: 2 },
+        TextureDimension::D2,
+        vec![255, 255, 255, 255, 255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        default(),
+    ));
     let target = commands
         .spawn((
             Camera3d::default(),
@@ -97,9 +115,9 @@ fn setup(
         min: -1312.5,
         max: 1312.5,
         wireframe: false,
-        // CAGE: splatmap defaults (use color texture as fallback)
-        splatmap: asset_server.load("color_2048x2048.png"),
-        layers: asset_server.load("color_2048x2048.png"),
+        // CAGE: splatmap defaults (all-zero → shader falls back to color texture)
+        splatmap: dummy_splatmap,
+        layers: dummy_layers,
         layer_uv_scale: 1.0,
     });
 }
