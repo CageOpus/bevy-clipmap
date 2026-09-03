@@ -1,0 +1,5 @@
+# This fork is maintained on LF; upstream ships LICENSE, README.md, convert/*
+# and src/* with CRLF. Normalising on checkin keeps every CAGE commit a real
+# diff instead of a line-ending smear (see the normalisation commit this file
+# lands with). Binary files are detected and left alone by `text=auto`.
+* text=auto eol=lf
