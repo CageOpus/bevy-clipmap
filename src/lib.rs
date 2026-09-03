@@ -1,3 +1,7 @@
+// The `AsBindGroup` derive on `ExtendedMaterial<StandardMaterial, GridMaterial>`
+// expands into a deeply nested auto-trait proof; under rustc 1.100 that trips the
+// `recursion_depth_exceeding_limit` lint at the default depth (rust#159228).
+#![recursion_limit = "256"]
 use std::{
     collections::HashMap,
     f32::consts::{FRAC_PI_2, PI},
